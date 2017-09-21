@@ -2,9 +2,27 @@ package main
 
 import (
   "fmt"
+  "sync"
 )
 
-var done map [string]bool
+type SafeMap struct {
+  m map[string]bool
+  mux sync.Mutex
+}
+
+func (m *SafeMap) check(s string) bool {
+  m.mux.Lock()
+  defer m.mux.Unlock()
+  return m.m[s]
+}
+
+func (m *SafeMap) register(s string) {
+  m.mux.Lock()
+  m.m[s] = true
+  m.mux.Unlock()
+}
+
+var done SafeMap
 
 type Fetcher interface {
   // Fetch returns the body of URL and
@@ -16,12 +34,13 @@ type Fetcher interface {
 // pages starting with url, to a maximum of depth.
 func Crawl(url string, depth int, fetcher Fetcher) {
   // TODO: Fetch URLs in parallel.
-  _, ok := done[url]
-  if depth <= 0 || ok {
+  if depth <= 0 || done.check(url) {
     return
   }
+
   body, urls, err := fetcher.Fetch(url)
-  done[url] = true
+  done.register(url)
+
   if err != nil {
     fmt.Println(err)
     return
@@ -34,7 +53,7 @@ func Crawl(url string, depth int, fetcher Fetcher) {
 }
 
 func main() {
-  done = make(map [string]bool)
+  done = SafeMap{m: make(map[string]bool)}
   Crawl("http://golang.org/", 4, fetcher)
 }
 
